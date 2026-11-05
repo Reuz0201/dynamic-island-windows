@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- та же папка сборки, что у острова: остров запускает настройки из своей папки -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>DynamicIsland.Settings</AssemblyName>
+    <RootNamespace>DynamicIsland.SettingsApp</RootNamespace>
+    <RollForward>Major</RollForward>
+    <LangVersion>latest</LangVersion>
+    <Version>0.0.0-dev</Version>
+    <Product>Dynamic Island — настройки</Product>
+    <OutputPath>..\bin\$(Configuration)\</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- общая модель настроек с островом -->
+    <Compile Include="..\Shared\IslandSettings.cs" Link="Shared\IslandSettings.cs" />
+  </ItemGroup>
+
+</Project>

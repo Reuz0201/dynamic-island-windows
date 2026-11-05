@@ -1,0 +1,67 @@
+name: Release
+
+# Каждый пуш в main (кроме правок только .md) собирает новую версию
+# и публикует её в GitHub Releases. Установленный остров сам её подхватит.
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'install.ps1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Версия
+        id: ver
+        shell: pwsh
+        run: |
+          $v = "1.0.${{ github.run_number }}"
+          "version=$v" >> $env:GITHUB_OUTPUT
+          Write-Host "Собираю версию $v"
+
+      - name: Сборка острова
+        run: dotnet publish DynamicIsland.csproj -c Release -o publish --nologo -p:Version=${{ steps.ver.outputs.version }}
+
+      - name: Сборка настроек
+        run: dotnet publish Settings/DynamicIsland.Settings.csproj -c Release -o publish --nologo -p:Version=${{ steps.ver.outputs.version }}
+
+      - name: Архив
+        shell: pwsh
+        run: |
+          Remove-Item publish\*.pdb -ErrorAction SilentlyContinue
+          Compress-Archive -Path publish\* -DestinationPath DynamicIsland-win-x64.zip
+          Get-Item DynamicIsland-win-x64.zip | Select-Object Name, Length
+
+      - name: Релиз
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: Dynamic Island ${{ steps.ver.outputs.version }}
+          generate_release_notes: true
+          make_latest: true
+          files: DynamicIsland-win-x64.zip
+          body: |
+            ### Установка
+            В PowerShell:
+            ```powershell
+            irm https://raw.githubusercontent.com/${{ github.repository }}/main/install.ps1 | iex
+            ```
+            Или скачай `DynamicIsland-win-x64.zip`, распакуй и запусти `DynamicIsland.exe`.
+            Уже установленный остров обновится сам.
