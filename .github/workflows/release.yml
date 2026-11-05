@@ -24,6 +24,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # нужна история, чтобы посчитать номер сборки
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -33,9 +35,12 @@ jobs:
         id: ver
         shell: pwsh
         run: |
-          # мажор.минор — из version.txt, последняя цифра — номер запуска
-          $prefix = (Get-Content version.txt -Raw).Trim()
-          $v = "$prefix.${{ github.run_number }}"
+          # мажор.минор — из version.txt, последняя цифра — сколько коммитов прошло
+          # с последней правки version.txt (поменял version.txt — счёт пошёл с .0)
+          $prefix = (Get-Content version.txt | Select-Object -First 1).Trim()
+          $base = git log -1 --format=%H -- version.txt
+          $patch = [int](git rev-list --count "$base..HEAD")
+          $v = "$prefix.$patch"
           "version=$v" >> $env:GITHUB_OUTPUT
           Write-Host "Собираю версию $v"
 
