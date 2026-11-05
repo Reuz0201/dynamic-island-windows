@@ -159,9 +159,9 @@ namespace DynamicIsland.Update
                 foreach (var asset in root.GetProperty("assets").EnumerateArray())
                 {
                     string? name = asset.GetProperty("name").GetString();
-                    string? url = asset.GetProperty("browser_download_url").GetString();
-                    if (name == AppInfo.ReleaseAsset) zip = url;
-                    else if (name == AppInfo.ReleaseAsset + ".sha256") sha = url;
+                    string? assetUrl = asset.GetProperty("browser_download_url").GetString();
+                    if (name == AppInfo.ReleaseAsset) zip = assetUrl;
+                    else if (name == AppInfo.ReleaseAsset + ".sha256") sha = assetUrl;
                 }
 
                 return zip == null ? null : new Release(tag, zip, sha, notes);
