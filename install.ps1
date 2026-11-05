@@ -64,8 +64,9 @@ foreach ($item in @(
 }
 
 Write-Host "  Установлено в $dir" -ForegroundColor Green
-Write-Host '  Запускаю (Windows спросит права администратора — это для учёта трафика)...'
+Write-Host '  Запускаю...'
 Start-Process (Join-Path $dir 'DynamicIsland.exe')
 Write-Host ''
 Write-Host '  Готово! Настройки: ПКМ по острову → «Настройки…»' -ForegroundColor Green
+Write-Host '  Для «трафика приложений» остров один раз попросит разрешение администратора.' -ForegroundColor DarkGray
 Write-Host ''

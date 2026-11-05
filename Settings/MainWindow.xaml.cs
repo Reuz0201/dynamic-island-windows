@@ -51,6 +51,7 @@ namespace DynamicIsland.SettingsApp
         public MainWindow()
         {
             InitializeComponent();
+            Log.Init("settings");
 
             _s = IslandSettings.Load();
 
@@ -165,7 +166,109 @@ namespace DynamicIsland.SettingsApp
 
         // ================================================================ страницы
 
+        // ================================================================ темы
+
+        private static readonly (string Name, Action<IslandSettings> Apply)[] Themes =
+        {
+            ("Классика", _ => { }),
+            ("Стекло", t => { t.BackgroundColor = "#1C1C1E"; t.BackgroundOpacity = 0.65; t.GlowIntensity = 0.6; }),
+            ("Неон", t => { t.AccentMode = "fixed"; t.AccentColor = "#FF5CA8"; t.GlowIntensity = 1.6; t.BorderEnabled = false; t.BackgroundOpacity = 1; }),
+            ("Минимал", t => { t.GlowEnabled = false; t.BorderEnabled = false; t.IdleStyle = "mini"; t.ShowEqualizer = false; t.BackgroundOpacity = 0.9; }),
+            ("Океан", t => { t.BackgroundColor = "#0B1A33"; t.BackgroundOpacity = 0.92; t.AccentMode = "fixed"; t.AccentColor = "#64D2FF"; t.GlowIntensity = 1.2; }),
+            ("Кубик", t => { t.Roundness = 0.35; t.BackgroundColor = "#1C1C1E"; t.GlowIntensity = 0.8; }),
+        };
+
+        /// <summary>Перенести только «внешний вид» (не модули и не системное).</summary>
+        private static void CopyLook(IslandSettings from, IslandSettings to)
+        {
+            to.BackgroundColor = from.BackgroundColor;
+            to.BackgroundOpacity = from.BackgroundOpacity;
+            to.AccentMode = from.AccentMode;
+            to.AccentColor = from.AccentColor;
+            to.GlowEnabled = from.GlowEnabled;
+            to.GlowIntensity = from.GlowIntensity;
+            to.Roundness = from.Roundness;
+            to.BorderEnabled = from.BorderEnabled;
+            to.IdleStyle = from.IdleStyle;
+            to.IdleText = from.IdleText;
+            to.ShowEqualizer = from.ShowEqualizer;
+            to.ShowArtist = from.ShowArtist;
+            to.SpringAnimations = from.SpringAnimations;
+            to.AnimationSpeed = from.AnimationSpeed;
+            to.FontFamily = from.FontFamily;
+            to.Scale = from.Scale;
+        }
+
+        private void ApplyTheme(Action<IslandSettings> preset)
+        {
+            var theme = new IslandSettings { Scale = _s.Scale, FontFamily = _s.FontFamily, IdleText = _s.IdleText };
+            preset(theme);
+            CopyLook(theme, _s);
+            Changed();
+            ShowPage("look");
+        }
+
+        private void ExportTheme()
+        {
+            var dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                FileName = "моя тема.island.json",
+                Filter = "Тема острова (*.island.json)|*.island.json",
+            };
+            if (dialog.ShowDialog(this) != true) return;
+
+            var theme = new IslandSettings();
+            CopyLook(_s, theme);
+            try
+            {
+                File.WriteAllText(dialog.FileName, System.Text.Json.JsonSerializer.Serialize(theme,
+                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                Flash("Тема сохранена ✓", Color.FromRgb(0x30, 0xD1, 0x58));
+            }
+            catch (Exception ex)
+            {
+                Flash("Не сохранилось: " + ex.Message, Color.FromRgb(0xFF, 0x45, 0x3A));
+            }
+        }
+
+        private void ImportTheme()
+        {
+            var dialog = new Microsoft.Win32.OpenFileDialog { Filter = "Тема острова (*.island.json)|*.island.json|JSON|*.json" };
+            if (dialog.ShowDialog(this) != true) return;
+
+            try
+            {
+                var theme = System.Text.Json.JsonSerializer.Deserialize<IslandSettings>(File.ReadAllText(dialog.FileName));
+                if (theme == null) throw new InvalidDataException("пустой файл");
+                CopyLook(theme.Normalized(), _s);
+                Changed();
+                ShowPage("look");
+                Flash("Тема загружена ✓", Color.FromRgb(0x30, 0xD1, 0x58));
+            }
+            catch (Exception ex)
+            {
+                Flash("Не тема острова: " + ex.Message, Color.FromRgb(0xFF, 0x45, 0x3A));
+            }
+        }
+
+        private FrameworkElement ThemeButtons()
+        {
+            var panel = new WrapPanel();
+            foreach (var (name, apply) in Themes)
+            {
+                var b = new Button { Content = name, Style = (Style)FindResource("Ghost"), Margin = new Thickness(0, 0, 8, 8) };
+                b.Click += (_, _) => ApplyTheme(apply);
+                panel.Children.Add(b);
+            }
+            return panel;
+        }
+
         private FrameworkElement LookPage() => Page("Внешний вид",
+            Card("Темы",
+                ThemeButtons(),
+                Row("Своя тема", "сохранить в файл или загрузить от друга",
+                    Buttons(("Экспорт", false, ExportTheme), ("Импорт", false, ImportTheme)))),
+
             Card("Цвета",
                 Row("Фон острова", null, ColorPicker(BackgroundSwatches, _s.BackgroundColor, v => { _s.BackgroundColor = v; Changed(); })),
                 Row("Прозрачность фона", null, SliderControl(30, 100, _s.BackgroundOpacity * 100, 1, v => $"{v:0}%", v => { _s.BackgroundOpacity = v / 100; Changed(); })),
@@ -200,7 +303,24 @@ namespace DynamicIsland.SettingsApp
                 Row("Длительность уведомлений", "зарядка, наушники, VPN…",
                     SliderControl(50, 300, _s.AlertDuration * 100, 10, v => $"{v:0}%", v => { _s.AlertDuration = v / 100; Changed(); }))));
 
+        private FrameworkElement MonitorChoice()
+        {
+            var options = new List<(string Value, string Label)> { ("", "Основной") };
+            int i = 1;
+            foreach (var m in Monitors.All())
+            {
+                options.Add((m.DeviceName, $"{i}: {m.Width}×{m.Height}{(m.IsPrimary ? " · осн." : "")}"));
+                i++;
+            }
+            return Choice(options.ToArray(), _s.Monitor, v => { _s.Monitor = v; Changed(); });
+        }
+
         private FrameworkElement PlacePage() => Page("Расположение",
+            Card("Монитор",
+                Row("Где показывать остров", null, MonitorChoice()),
+                Row("Прятать в играх и видео на весь экран", "уведомления подождут, пока выйдешь",
+                    Toggle(_s.HideInFullscreen, v => { _s.HideInFullscreen = v; Changed(); }))),
+
             Card("Положение на экране",
                 Row("Отступ сверху", null, SliderControl(0, 200, _s.OffsetY, 1, v => $"{v:0} px", v => { _s.OffsetY = v; Changed(); })),
                 Row("Сдвиг по горизонтали", "минус — влево, плюс — вправо",
@@ -214,8 +334,12 @@ namespace DynamicIsland.SettingsApp
                 Row("Зарядка", "подключение зарядки и низкий заряд", Toggle(_s.ModuleBattery, v => { _s.ModuleBattery = v; Changed(); })),
                 Row("Bluetooth", "подключение наушников и других устройств", Toggle(_s.ModuleBluetooth, v => { _s.ModuleBluetooth = v; Changed(); })),
                 Row("Загрузки", "файлы в папке «Загрузки»", Toggle(_s.ModuleDownloads, v => { _s.ModuleDownloads = v; Changed(); })),
-                Row("Трафик приложений", "кто отправляет и качает (нужен запуск от админа)", Toggle(_s.ModuleNetwork, v => { _s.ModuleNetwork = v; Changed(); })),
-                Row("VPN", "подключение, страна и IP", Toggle(_s.ModuleVpn, v => { _s.ModuleVpn = v; Changed(); }))));
+                Row("Трафик приложений", "кто отправляет и качает (помощнику нужно разрешение админа один раз)", Toggle(_s.ModuleNetwork, v => { _s.ModuleNetwork = v; Changed(); })),
+                Row("VPN", "подключение, страна и IP", Toggle(_s.ModuleVpn, v => { _s.ModuleVpn = v; Changed(); })),
+                Row("Громкость", "полоска вместо системной плашки + смена устройства звука", Toggle(_s.ModuleVolume, v => { _s.ModuleVolume = v; Changed(); })),
+                Row("Яркость", "на ноутбуках", Toggle(_s.ModuleBrightness, v => { _s.ModuleBrightness = v; Changed(); })),
+                Row("Микрофон и камера", "кто сейчас слушает или смотрит", Toggle(_s.ModulePrivacy, v => { _s.ModulePrivacy = v; Changed(); })),
+                Row("Полка для файлов", "перетащи файлы на остров, потом забери", Toggle(_s.ModuleShelf, v => { _s.ModuleShelf = v; Changed(); }))));
 
         private FrameworkElement UpdatesPage()
         {
@@ -251,17 +375,42 @@ namespace DynamicIsland.SettingsApp
 
         private FrameworkElement SystemPage() => Page("Система",
             Card("Запуск",
-                Row("Запускать вместе с Windows", "через планировщик задач, с правами администратора",
-                    Toggle(_s.Autostart, v => { _s.Autostart = v; Changed(); }))),
+                Row("Запускать вместе с Windows", null,
+                    Toggle(_s.Autostart, v => { _s.Autostart = v; Changed(); })),
+                Row("Помощник трафика", "единственная часть с правами админа; разрешение даётся один раз",
+                    Buttons(("Разрешить / переустановить", false, InstallHelper)))),
 
             Card("Файлы",
                 Row("Папка настроек", IslandSettings.Folder, Buttons(("Открыть", false, () => OpenUrl(IslandSettings.Folder)))),
+                Row("Логи", "если что-то глючит — скинь файл отсюда", Buttons(("Открыть", false, () =>
+                {
+                    Directory.CreateDirectory(Log.Folder);
+                    OpenUrl(Log.Folder);
+                }))),
                 Row("Сбросить всё", "вернуть настройки по умолчанию", Buttons(("Сбросить", false, ResetAll)))),
 
             Card("О программе",
                 Text($"Dynamic Island для Windows · {(AppInfo.IsDevBuild ? "локальная сборка" : "версия " + AppInfo.Version)}"),
                 Spacer(10),
                 Buttons(("Страница на GitHub", false, () => OpenUrl(AppInfo.RepoUrl)))));
+
+        private void InstallHelper()
+        {
+            string island = Path.Combine(AppContext.BaseDirectory, "DynamicIsland.exe");
+            try
+            {
+                Process.Start(new ProcessStartInfo(island, "--install-helper") { UseShellExecute = true, Verb = "runas" });
+                Flash("Помощник устанавливается…", Color.FromRgb(0x0A, 0x84, 0xFF));
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                Flash("Отменено", Color.FromRgb(0xFF, 0x9F, 0x0A));
+            }
+            catch (Exception ex)
+            {
+                Flash(ex.Message, Color.FromRgb(0xFF, 0x45, 0x3A));
+            }
+        }
 
         private void ResetAll()
         {

@@ -20,6 +20,8 @@
   <ItemGroup>
     <!-- общая модель настроек с островом -->
     <Compile Include="..\Shared\IslandSettings.cs" Link="Shared\IslandSettings.cs" />
+    <Compile Include="..\Shared\Log.cs" Link="Shared\Log.cs" />
+    <Compile Include="..\Shared\Monitors.cs" Link="Shared\Monitors.cs" />
   </ItemGroup>
 
 </Project>

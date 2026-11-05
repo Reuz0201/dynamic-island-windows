@@ -3,21 +3,20 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Security.Principal;
+using System.IO.Pipes;
+using System.Text.Json;
 using System.Threading;
 using DynamicIsland.Core;
-using Microsoft.Diagnostics.Tracing.Parsers;
-using Microsoft.Diagnostics.Tracing.Session;
+using DynamicIsland.Shared;
 
 namespace DynamicIsland.Modules
 {
     /// <summary>
-    /// Трафик по процессам через ETW (то же, чем пользуется «Монитор ресурсов»):
-    /// «Telegram · отправляет 3 МБ/с», «Steam · качает 20 МБ/с».
+    /// Трафик по приложениям: «Telegram · отправляет 3 МБ/с», «Steam · качает 20 МБ/с».
     ///
-    /// VPN-клиенты (kittend и т.п.) и системные процессы игнорируются — их трафик
-    /// это «обёртка» над трафиком настоящих приложений, которые и так видны.
-    /// Нужен запуск от администратора.
+    /// Сами данные собирает помощник DynamicIsland.NetHelper (ему нужны права админа для ETW),
+    /// а остров читает их через pipe — поэтому остров работает без админа.
+    /// VPN-клиенты (kittend и т.п.) и системные процессы игнорируются.
     /// </summary>
     public sealed class NetworkModule : IStartable, IDisposable
     {
@@ -61,29 +60,20 @@ namespace DynamicIsland.Modules
             public int SeenTick;
         }
 
-        private sealed class ProcInfo
-        {
-            public string Name = "";
-            public string Friendly = "";
-            public DateTime ResolvedAt;
-        }
-
         private readonly IIslandHost _host;
         private readonly Func<bool> _folderDownloadActive;
         private readonly object _lock = new();
 
-        // pid → (отправлено, получено) за текущую секунду
-        private Dictionary<int, (long Up, long Down)> _bytes = new();
-        private readonly Dictionary<int, ProcInfo> _procs = new();
+        // приложение → (имя для показа, отправлено, получено) за текущую секунду
+        private Dictionary<string, (string Friendly, long Up, long Down)> _bytes = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Flow> _flows = new();
         private readonly HashSet<string> _hiddenApps;
         private readonly string _hiddenFile;
-        private readonly int _ownPid = Environment.ProcessId;
-
-        private TraceEventSession? _session;
         private Thread? _thread;
         private Timer? _timer;
         private int _tick;
+        private volatile bool _stopped;
+        private NamedPipeClientStream? _pipe;
 
         public NetworkModule(IIslandHost host, Func<bool> folderDownloadActive)
         {
@@ -95,83 +85,120 @@ namespace DynamicIsland.Modules
             _hiddenApps = LoadHidden();
         }
 
-        public static bool IsAdmin()
-        {
-            try
-            {
-                using var identity = WindowsIdentity.GetCurrent();
-                return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
-            }
-            catch
-            {
-                return false;
-            }
-        }
+        public static bool IsAdmin() => Elevation.IsAdmin();
 
         public void Start()
         {
-            if (!IsAdmin())
-            {
-                _host.ShowAlert(new IslandAlert
-                {
-                    Glyph = Glyphs.Upload,
-                    Accent = Palette.Orange,
-                    Title = "Трафик по приложениям выключен",
-                    Subtitle = "Запусти через start.bat — нужны права администратора",
-                    Duration = TimeSpan.FromSeconds(6),
-                });
-                return;
-            }
-
-            _thread = new Thread(RunSession) { IsBackground = true, Name = "ETW network" };
+            _thread = new Thread(ReadLoop) { IsBackground = true, Name = "NetHelper pipe" };
             _thread.Start();
-
             _timer = new Timer(_ => Tick(), null, 1000, 1000);
         }
 
-        // ------------------------------------------------------------ ETW
+        // ------------------------------------------------------------ связь с помощником
 
-        private void RunSession()
+        private void ReadLoop()
         {
             try
             {
-                // Своё имя сессии (Win8+), чтобы не драться с другими программами за «NT Kernel Logger»
-                _session = new TraceEventSession("DynamicIsland-Network") { StopOnDispose = true };
-                _session.EnableKernelProvider(KernelTraceEventParser.Keywords.NetworkTCPIP);
+                if (!Elevation.IsHelperInstalled())
+                {
+                    Log.Info("Помощник трафика не установлен — спрашиваем разрешение");
+                    AskForHelper();
+                    // ждём, пока поставят (или навсегда, если отказались — это фоновый поток)
+                    while (!_stopped && !Elevation.IsHelperInstalled()) Thread.Sleep(15000);
+                }
 
-                var k = _session.Source.Kernel;
-                k.TcpIpSend += d => Add(d.ProcessID, d.size, upload: true);
-                k.TcpIpSendIPV6 += d => Add(d.ProcessID, d.size, upload: true);
-                k.UdpIpSend += d => Add(d.ProcessID, d.size, upload: true);
-                k.UdpIpSendIPV6 += d => Add(d.ProcessID, d.size, upload: true);
-                k.TcpIpRecv += d => Add(d.ProcessID, d.size, upload: false);
-                k.TcpIpRecvIPV6 += d => Add(d.ProcessID, d.size, upload: false);
-                k.UdpIpRecv += d => Add(d.ProcessID, d.size, upload: false);
-                k.UdpIpRecvIPV6 += d => Add(d.ProcessID, d.size, upload: false);
+                bool launched = false;
+                while (!_stopped)
+                {
+                    try
+                    {
+                        using var pipe = new NamedPipeClientStream(".", "DynamicIsland.Net", PipeDirection.In);
+                        _pipe = pipe;
+                        try
+                        {
+                            pipe.Connect(1500);
+                        }
+                        catch (TimeoutException)
+                        {
+                            if (!launched)
+                            {
+                                launched = true;
+                                Elevation.RunHelper();
+                            }
+                            continue;
+                        }
 
-                _session.Source.Process(); // блокирует поток, пока сессию не остановят
+                        Log.Info("Подключились к помощнику трафика");
+                        using var reader = new StreamReader(pipe);
+                        string? line;
+                        while (!_stopped && (line = reader.ReadLine()) != null) Consume(line);
+                    }
+                    catch (Exception ex) when (!_stopped)
+                    {
+                        Log.Warn("Связь с помощником: " + ex.Message);
+                    }
+
+                    // помощник закрылся — перезапустим
+                    launched = false;
+                    Thread.Sleep(2000);
+                }
             }
             catch (Exception ex)
             {
-                _host.ShowAlert(new IslandAlert
-                {
-                    Glyph = Glyphs.Upload,
-                    Accent = Palette.Red,
-                    Title = "Не удалось следить за трафиком",
-                    Subtitle = ex.Message,
-                    Duration = TimeSpan.FromSeconds(8),
-                });
+                Log.Error("Модуль трафика", ex);
             }
         }
 
-        private void Add(int pid, int size, bool upload)
+        private void AskForHelper()
         {
-            if (pid <= 4 || pid == _ownPid || size <= 0) return;
+            _host.ShowAlert(new IslandAlert
+            {
+                Key = "nethelper",
+                Glyph = Glyphs.Upload,
+                Accent = Palette.Purple,
+                Title = "Трафик приложений",
+                Subtitle = "Нужно разрешение администратора один раз",
+                Detail = "дальше помощник запускается сам, без окон",
+                Duration = TimeSpan.FromSeconds(20),
+                Actions =
+                {
+                    new IslandAction
+                    {
+                        Glyph = "\uE72E",
+                        Text = "Разрешить",
+                        OnClick = () => ThreadPool.QueueUserWorkItem(_ =>
+                        {
+                            if (Elevation.RequestHelperInstall()) Elevation.RunHelper();
+                        }),
+                    },
+                    new IslandAction { Glyph = Glyphs.Close, Tooltip = "Не сейчас" },
+                },
+            });
+        }
+
+        private sealed class Item
+        {
+            public string n { get; set; } = "";
+            public string f { get; set; } = "";
+            public long u { get; set; }
+            public long d { get; set; }
+        }
+
+        private void Consume(string line)
+        {
+            List<Item>? items;
+            try { items = JsonSerializer.Deserialize<List<Item>>(line); }
+            catch { return; }
+            if (items == null) return;
 
             lock (_lock)
             {
-                _bytes.TryGetValue(pid, out var cur);
-                _bytes[pid] = upload ? (cur.Up + size, cur.Down) : (cur.Up, cur.Down + size);
+                foreach (var it in items)
+                {
+                    _bytes.TryGetValue(it.n, out var cur);
+                    _bytes[it.n] = (it.f, cur.Up + it.u, cur.Down + it.d);
+                }
             }
         }
 
@@ -190,24 +217,20 @@ namespace DynamicIsland.Modules
 
         private void TickCore()
         {
-            Dictionary<int, (long Up, long Down)> snapshot;
+            Dictionary<string, (string Friendly, long Up, long Down)> snapshot;
             lock (_lock)
             {
                 snapshot = _bytes;
-                _bytes = new Dictionary<int, (long Up, long Down)>();
+                _bytes = new Dictionary<string, (string Friendly, long Up, long Down)>(StringComparer.OrdinalIgnoreCase);
             }
 
             _tick++;
 
-            // Склеиваем процессы одного приложения (у Chrome их десятки)
             var perApp = new Dictionary<string, (string Friendly, double Up, double Down)>(StringComparer.OrdinalIgnoreCase);
-            foreach (var (pid, b) in snapshot)
+            foreach (var (name, b) in snapshot)
             {
-                var info = Resolve(pid);
-                if (info == null || ShouldIgnore(info.Name)) continue;
-
-                perApp.TryGetValue(info.Name, out var cur);
-                perApp[info.Name] = (info.Friendly, cur.Up + b.Up, cur.Down + b.Down);
+                if (ShouldIgnore(name)) continue;
+                perApp[name] = (b.Friendly, b.Up, b.Down);
             }
 
             bool folderDownload = _folderDownloadActive();
@@ -223,13 +246,6 @@ namespace DynamicIsland.Modules
             // Приложения, которые в эту секунду молчали, тоже надо «прокрутить» (0 байт)
             foreach (var flow in _flows.Values.Where(f => f.SeenTick != _tick).ToList())
                 UpdateFlow(flow.App, flow.Friendly, flow.Upload, 0);
-
-            // Забываем процессы, которых давно нет
-            if (_tick % 60 == 0)
-            {
-                foreach (var pid in _procs.Keys.Where(p => !snapshot.ContainsKey(p)).ToList())
-                    _procs.Remove(pid);
-            }
         }
 
         private void UpdateFlow(string app, string friendly, bool upload, double bps)
@@ -378,41 +394,11 @@ namespace DynamicIsland.Modules
             lock (_hiddenApps) return _hiddenApps.Contains(name);
         }
 
-        private ProcInfo? Resolve(int pid)
-        {
-            if (_procs.TryGetValue(pid, out var cached) && DateTime.UtcNow - cached.ResolvedAt < TimeSpan.FromMinutes(2))
-                return cached;
-
-            try
-            {
-                using var p = Process.GetProcessById(pid);
-                string name = p.ProcessName;
-                string friendly = name;
-
-                try
-                {
-                    string? desc = p.MainModule?.FileVersionInfo.FileDescription;
-                    if (!string.IsNullOrWhiteSpace(desc) && desc.Length <= 40) friendly = desc.Trim();
-                }
-                catch
-                {
-                    // к некоторым процессам доступа нет даже у админа — хватит имени exe
-                }
-
-                var info = new ProcInfo { Name = name, Friendly = friendly, ResolvedAt = DateTime.UtcNow };
-                _procs[pid] = info;
-                return info;
-            }
-            catch
-            {
-                return null; // процесс уже завершился
-            }
-        }
-
         public void Dispose()
         {
+            _stopped = true;
             _timer?.Dispose();
-            try { _session?.Dispose(); } catch { }
+            try { _pipe?.Dispose(); } catch { }
         }
     }
 }

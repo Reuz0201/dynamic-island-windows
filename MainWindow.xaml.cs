@@ -120,6 +120,9 @@ namespace DynamicIsland
             {
                 if (args.PropertyName == nameof(SystemParameters.WorkArea)) PositionWindow();
             };
+            Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (_, _) => Dispatcher.InvokeAsync(PositionWindow);
+            InitFullscreenWatch();
+            InitShelf();
 
             BuildTools();
             BuildContextMenu();
@@ -154,14 +157,6 @@ namespace DynamicIsland
         {
             DisposeSettingsAndModules();
             base.OnClosed(e);
-        }
-
-        private void PositionWindow()
-        {
-            var area = SystemParameters.WorkArea;
-            Left = area.Left + (area.Width - Width) / 2 + _settings.OffsetX;
-            // сам остров стоит на 10 px ниже края окна (место под свечение)
-            Top = area.Top + _settings.OffsetY - 10;
         }
 
         // ================================================================ меню и быстрые действия
@@ -270,11 +265,18 @@ namespace DynamicIsland
             if (alert.Key != null)
             {
                 _alertQueue.RemoveAll(a => a.Key == alert.Key);
-                if (_alert?.Key == alert.Key)
+                if (_alert?.Key == alert.Key && !_hiddenForFullscreen)
                 {
-                    Present(alert);
+                    Present(alert, update: true);
                     return;
                 }
+            }
+
+            // игра/видео на весь экран — остров спрятан: копим (или выбрасываем мелочь вроде громкости)
+            if (_hiddenForFullscreen)
+            {
+                if (!alert.DropIfHidden) _alertQueue.Add(alert);
+                return;
             }
 
             if (_alert == null) Present(alert);
@@ -293,7 +295,7 @@ namespace DynamicIsland
             _alert = null;
             try { alert.OnDismiss?.Invoke(); } catch { }
 
-            if (_alertQueue.Count > 0)
+            if (_alertQueue.Count > 0 && !_hiddenForFullscreen)
             {
                 var next = _alertQueue[0];
                 _alertQueue.RemoveAt(0);
@@ -306,11 +308,11 @@ namespace DynamicIsland
             }
         });
 
-        private void Present(IslandAlert alert)
+        private void Present(IslandAlert alert, bool update = false)
         {
             _alert = alert;
             AlertHost.Content = BuildAlertView(alert);
-            AnimateGlow(alert.Accent);
+            if (!(update && alert.Quiet)) AnimateGlow(alert.Accent);
 
             _alertTimer.Stop();
             if (alert.Duration is TimeSpan d)
@@ -320,7 +322,7 @@ namespace DynamicIsland
             }
 
             Refresh(force: true);
-            Pulse();
+            if (!(update && alert.Quiet)) Pulse();
         }
 
         private FrameworkElement BuildAlertView(IslandAlert alert)
@@ -365,6 +367,20 @@ namespace DynamicIsland
                     TextTrimming = TextTrimming.CharacterEllipsis,
                 });
             }
+            if (alert.Progress is double level)
+            {
+                var track = new Grid { Height = 5, Margin = new Thickness(0, 7, 0, 2), MinWidth = 180 };
+                track.Children.Add(new Border { CornerRadius = new CornerRadius(2.5), Background = Views.Brush(Colors.White, 0x26) });
+                track.Children.Add(new Border
+                {
+                    CornerRadius = new CornerRadius(2.5),
+                    Background = Views.Brush(alert.Accent),
+                    RenderTransformOrigin = new Point(0, 0.5),
+                    RenderTransform = new ScaleTransform(Math.Clamp(level, 0, 1), 1),
+                });
+                texts.Children.Add(track);
+            }
+
             Grid.SetColumn(texts, 1);
             grid.Children.Add(texts);
 

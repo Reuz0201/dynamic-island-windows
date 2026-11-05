@@ -6,7 +6,8 @@ on:
   push:
     branches: [ main ]
     paths-ignore:
-      - '**.md'
+      - 'README.md'
+      - 'docs/**'
       - 'install.ps1'
   workflow_dispatch:
 
@@ -32,7 +33,9 @@ jobs:
         id: ver
         shell: pwsh
         run: |
-          $v = "1.0.${{ github.run_number }}"
+          # мажор.минор — из version.txt, последняя цифра — номер запуска
+          $prefix = (Get-Content version.txt -Raw).Trim()
+          $v = "$prefix.${{ github.run_number }}"
           "version=$v" >> $env:GITHUB_OUTPUT
           Write-Host "Собираю версию $v"
 
@@ -42,26 +45,29 @@ jobs:
       - name: Сборка настроек
         run: dotnet publish Settings/DynamicIsland.Settings.csproj -c Release -o publish --nologo -p:Version=${{ steps.ver.outputs.version }}
 
-      - name: Архив
+      - name: Сборка помощника трафика
+        run: dotnet publish NetHelper/DynamicIsland.NetHelper.csproj -c Release -o publish --nologo -p:Version=${{ steps.ver.outputs.version }}
+
+      - name: Архив и контрольная сумма
         shell: pwsh
         run: |
           Remove-Item publish\*.pdb -ErrorAction SilentlyContinue
+          foreach ($f in 'DynamicIsland.exe','DynamicIsland.Settings.exe','DynamicIsland.NetHelper.exe') {
+            if (-not (Test-Path "publish\$f")) { throw "нет $f в сборке" }
+          }
           Compress-Archive -Path publish\* -DestinationPath DynamicIsland-win-x64.zip
-          Get-Item DynamicIsland-win-x64.zip | Select-Object Name, Length
+          $hash = (Get-FileHash DynamicIsland-win-x64.zip -Algorithm SHA256).Hash
+          "$hash  DynamicIsland-win-x64.zip" | Out-File -Encoding ascii -NoNewline DynamicIsland-win-x64.zip.sha256
+          Get-Item DynamicIsland-win-x64.zip* | Select-Object Name, Length
+          Write-Host "SHA256: $hash"
 
       - name: Релиз
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.ver.outputs.version }}
           name: Dynamic Island ${{ steps.ver.outputs.version }}
-          generate_release_notes: true
           make_latest: true
-          files: DynamicIsland-win-x64.zip
-          body: |
-            ### Установка
-            В PowerShell:
-            ```powershell
-            irm https://raw.githubusercontent.com/${{ github.repository }}/main/install.ps1 | iex
-            ```
-            Или скачай `DynamicIsland-win-x64.zip`, распакуй и запусти `DynamicIsland.exe`.
-            Уже установленный остров обновится сам.
+          files: |
+            DynamicIsland-win-x64.zip
+            DynamicIsland-win-x64.zip.sha256
+          body_path: release-notes.md

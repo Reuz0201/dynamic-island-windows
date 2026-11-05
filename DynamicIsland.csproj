@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <!-- Windows-TFM нужен для WinRT API GlobalSystemMediaTransportControls -->
+    <!-- Windows-TFM нужен для WinRT API (медиа, Bluetooth, питание) -->
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
     <UseWPF>true</UseWPF>
@@ -13,20 +13,21 @@
     <!-- запустится и на .NET 9/10, если 8-го рантайма нет -->
     <RollForward>Major</RollForward>
     <LangVersion>latest</LangVersion>
-    <!-- запуск от администратора: нужен для учёта трафика по приложениям (ETW) -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
 
     <!-- Локальная сборка = dev (без автообновлений). GitHub Actions подставляет настоящую версию. -->
     <Version>0.0.0-dev</Version>
     <Product>Dynamic Island</Product>
 
-    <!-- в этой папке лежит отдельный проект приложения настроек -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);Settings\**</DefaultItemExcludes>
+    <!-- в этих папках отдельные проекты: настройки и помощник трафика -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);Settings\**;NetHelper\**;docs\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Microsoft TraceEvent: чтение системных событий сети (как «Монитор ресурсов») -->
-    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.*" />
+    <!-- громкость и смена устройства вывода звука -->
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+    <!-- яркость экрана ноутбука (WMI) -->
+    <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
 
 </Project>

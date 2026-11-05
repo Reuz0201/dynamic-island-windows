@@ -65,6 +65,12 @@ namespace DynamicIsland.Shared
         /// <summary>Сдвиг по горизонтали от центра, px (минус — влево).</summary>
         public double OffsetX { get; set; } = 0;
 
+        /// <summary>Имя монитора (\\.\DISPLAY2). Пусто — основной.</summary>
+        public string Monitor { get; set; } = "";
+
+        /// <summary>Прятать остров, когда открыта игра/видео на весь экран.</summary>
+        public bool HideInFullscreen { get; set; } = true;
+
         // ------------------------------------------------------------ модули
 
         public bool ModuleMusic { get; set; } = true;
@@ -74,6 +80,10 @@ namespace DynamicIsland.Shared
         public bool ModuleDownloads { get; set; } = true;
         public bool ModuleNetwork { get; set; } = true;
         public bool ModuleVpn { get; set; } = true;
+        public bool ModuleVolume { get; set; } = true;
+        public bool ModuleBrightness { get; set; } = true;
+        public bool ModulePrivacy { get; set; } = true;
+        public bool ModuleShelf { get; set; } = true;
 
         // ------------------------------------------------------------ система и обновления
 
@@ -154,6 +164,7 @@ namespace DynamicIsland.Shared
             if (IdleStyle != "mini") IdleStyle = "pill";
             if (AccentMode != "fixed") AccentMode = "album";
             IdleText ??= "";
+            Monitor ??= "";
             return this;
         }
     }

@@ -114,6 +114,7 @@ namespace DynamicIsland
             EqCompact.Visibility = s.ShowEqualizer ? Visibility.Visible : Visibility.Collapsed;
             EqExpanded.Visibility = s.ShowEqualizer ? Visibility.Visible : Visibility.Collapsed;
             ToolsButtons.Visibility = s.ModuleTimers ? Visibility.Visible : Visibility.Collapsed;
+            UpdateShelf();
 
             if (_alert == null) AnimateGlow(MusicAccent());
             UpdateProgressColor();
@@ -179,6 +180,10 @@ namespace DynamicIsland
                 () => RemoveActivitiesWithPrefix("net:"));
 
             Toggle("vpn", s.ModuleVpn, () => new VpnModule(this), () => SetStatus("vpn", null, Colors.White, ""));
+
+            Toggle("volume", s.ModuleVolume, () => new VolumeModule(this, volume: true, brightness: false), null);
+            Toggle("brightness", s.ModuleBrightness, () => new VolumeModule(this, volume: false, brightness: true), null);
+            Toggle("privacy", s.ModulePrivacy, () => new PrivacyModule(this), null);
         }
 
         private void Toggle(string key, bool enabled, Func<IDisposable> create, Action? cleanup)
@@ -196,7 +201,7 @@ namespace DynamicIsland
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"Модуль {key} не запустился: {ex}");
+                    Log.Error($"Модуль {key} не запустился", ex);
                     try { module?.Dispose(); } catch { }
                 }
             }
@@ -233,8 +238,32 @@ namespace DynamicIsland
             _updater = new Updater(this, () => _settings, () => Dispatcher.InvokeAsync(Close));
             _updater.Start();
 
+            if (!string.IsNullOrEmpty(App.RolledBackFrom))
+            {
+                Updater.MarkBadVersion(App.RolledBackFrom);
+                ShowAlert(new IslandAlert
+                {
+                    Key = "update",
+                    Glyph = Glyphs.Reset,
+                    Accent = Palette.Orange,
+                    Title = "Обновление откатил",
+                    Subtitle = $"Версия {App.RolledBackFrom} не запустилась — вернул прошлую",
+                    Detail = "подробности в логах (Настройки → Система)",
+                    Duration = TimeSpan.FromSeconds(8),
+                });
+            }
+
             if (!string.IsNullOrEmpty(App.UpdatedTo))
             {
+                // через 10 секунд нормальной работы говорим скрипту обновления «я жив» — иначе он откатит
+                var ok = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+                ok.Tick += (_, _) =>
+                {
+                    ok.Stop();
+                    Updater.ConfirmHealthy();
+                };
+                ok.Start();
+
                 ShowAlert(new IslandAlert
                 {
                     Key = "update",
@@ -274,45 +303,11 @@ namespace DynamicIsland
         private void ApplyAutostart()
         {
             bool want = _settings.Autostart;
-
-            // при первом запуске без автозапуска ничего не трогаем
-            if (_appliedAutostart == null && !want)
-            {
-                _appliedAutostart = false;
-                return;
-            }
             if (_appliedAutostart == want) return;
             _appliedAutostart = want;
 
-            // задача «с наивысшими правами» создаётся только из-под админа
-            if (!NetworkModule.IsAdmin()) return;
-
-            string exe = (Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "DynamicIsland.exe")).Replace("'", "''");
-
-            string script = want
-                ? "$a = New-ScheduledTaskAction -Execute '" + exe + "';" +
-                  "$t = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME;" +
-                  "$p = New-ScheduledTaskPrincipal -UserId $env:USERNAME -RunLevel Highest -LogonType Interactive;" +
-                  "$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew;" +
-                  "Register-ScheduledTask -TaskName 'DynamicIsland' -Action $a -Trigger $t -Principal $p -Settings $s -Force | Out-Null"
-                : "Unregister-ScheduledTask -TaskName 'DynamicIsland' -Confirm:$false -ErrorAction SilentlyContinue";
-
-            string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
-
-            Task.Run(() =>
-            {
-                try
-                {
-                    using var p = Process.Start(new ProcessStartInfo("powershell.exe",
-                        $"-NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand {encoded}")
-                    {
-                        CreateNoWindow = true,
-                        UseShellExecute = false,
-                    });
-                    p?.WaitForExit(15000);
-                }
-                catch { }
-            });
+            // через реестр (HKCU\...\Run) — админ не нужен
+            Task.Run(() => Elevation.SetAutostart(want));
         }
     }
 }

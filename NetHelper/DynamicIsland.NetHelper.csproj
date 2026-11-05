@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Помощник трафика: единственная часть, которой нужны права администратора (ETW).
+       Без окна. Ставится один раз как задача планировщика, остров читает данные через pipe. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>DynamicIsland.NetHelper</AssemblyName>
+    <RootNamespace>DynamicIsland.NetHelper</RootNamespace>
+    <RollForward>Major</RollForward>
+    <LangVersion>latest</LangVersion>
+    <Version>0.0.0-dev</Version>
+    <OutputPath>..\bin\$(Configuration)\</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\IslandSettings.cs" Link="Shared\IslandSettings.cs" />
+    <Compile Include="..\Shared\Log.cs" Link="Shared\Log.cs" />
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.*" />
+  </ItemGroup>
+
+</Project>

@@ -66,6 +66,15 @@ namespace DynamicIsland.Core
         public string? Key { get; init; }
 
         public Action? OnDismiss { get; init; }
+
+        /// <summary>Полоска уровня 0..1 (громкость, яркость). null — без полоски.</summary>
+        public double? Progress { get; init; }
+
+        /// <summary>Не копить в очереди, если остров спрятан (игра на весь экран): громкость и т.п.</summary>
+        public bool DropIfHidden { get; init; }
+
+        /// <summary>Повторное обновление с тем же ключом — без «пульса» и вспышки.</summary>
+        public bool Quiet { get; init; }
     }
 
     /// <summary>То, через что модули общаются с островом. Можно звать из любого потока.</summary>
@@ -116,6 +125,16 @@ namespace DynamicIsland.Core
         public const string Shield = "";
         public const string Globe = "";
         public const string Lightning = "";
+        public const string Attach = "\uE723";
+        public const string Microphone = "\uE720";
+        public const string Camera = "\uE722";
+        public const string Volume0 = "\uE992";
+        public const string Volume1 = "\uE993";
+        public const string Volume2 = "\uE994";
+        public const string Volume3 = "\uE995";
+        public const string Mute = "\uE74F";
+        public const string Brightness = "\uE706";
+        public const string Speaker = "\uE7F5";
     }
 
     public static class Format

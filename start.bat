@@ -1,16 +1,6 @@
 @echo off
 chcp 65001 >nul
 
-rem ---- права администратора (нужны для учёта трафика по приложениям) ----
-fltmc >nul 2>&1
-if errorlevel 1 (
-    set "ARG=%~1"
-    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-        "$f = '%~f0'; $d = (Get-Item -LiteralPath $f).PSDrive; if ($d.DisplayRoot) { $f = $d.DisplayRoot + $f.Substring(2) };" ^
-        "$a = $env:ARG; if ($a) { Start-Process -FilePath $f -ArgumentList $a -Verb RunAs } else { Start-Process -FilePath $f -Verb RunAs }"
-    exit /b
-)
-
 rem pushd, а не cd: работает и для сетевых дисков (UNC)
 pushd "%~dp0"
 set "EXE=bin\Release\net8.0-windows10.0.19041.0\DynamicIsland.exe"
@@ -18,6 +8,8 @@ set "EXE=bin\Release\net8.0-windows10.0.19041.0\DynamicIsland.exe"
 rem Закрываем уже запущенный остров, чтобы стартовала свежая версия
 taskkill /im DynamicIsland.exe /f >nul 2>&1
 taskkill /im DynamicIsland.Settings.exe /f >nul 2>&1
+rem помощник трафика закрывается сам после острова — даём ему пару секунд
+ping -n 3 127.0.0.1 >nul
 
 rem Пересобираем, только если код менялся (или запуск: start.bat rebuild)
 set "NEED=yes"
@@ -44,6 +36,14 @@ if "%NEED%"=="yes" (
     if errorlevel 1 (
         echo.
         echo [!] Сборка настроек упала, ошибки выше.
+        pause
+        exit /b 1
+    )
+    echo Собираю помощника трафика...
+    dotnet build NetHelper\DynamicIsland.NetHelper.csproj -c Release -nologo -v q -clp:ErrorsOnly
+    if errorlevel 1 (
+        echo.
+        echo [!] Сборка помощника упала, ошибки выше.
         pause
         exit /b 1
     )

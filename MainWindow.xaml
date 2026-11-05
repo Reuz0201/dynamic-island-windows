@@ -15,7 +15,7 @@
         TextOptions.TextFormattingMode="Display">
 
     <Grid>
-        <StackPanel x:Name="IslandRow" Orientation="Horizontal"
+        <StackPanel x:Name="IslandRow" Orientation="Horizontal" AllowDrop="True"
                     HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,10,0,0">
 
             <!-- ============================ ОСТРОВ ============================ -->
@@ -182,6 +182,9 @@
 
                             <!-- живые активности -->
                             <StackPanel x:Name="RowsPanel"/>
+
+                            <!-- полка: файлы, перетащенные на остров -->
+                            <WrapPanel x:Name="ShelfPanel" Margin="0,6,0,0" Visibility="Collapsed"/>
 
                             <!-- быстрые действия -->
                             <Grid x:Name="ToolsRow" Margin="0,14,0,0">
