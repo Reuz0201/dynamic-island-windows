@@ -52,6 +52,9 @@ namespace DynamicIsland.Shared
 
         public bool ShowEqualizer { get; set; } = true;
 
+        /// <summary>Эквалайзер качает под реальный звук системы (иначе — просто анимация).</summary>
+        public bool LiveEqualizer { get; set; } = true;
+
         public bool ShowArtist { get; set; } = true;
 
         /// <summary>Множитель длительности уведомлений 0.5–3.</summary>
@@ -84,6 +87,7 @@ namespace DynamicIsland.Shared
         public bool ModuleBrightness { get; set; } = true;
         public bool ModulePrivacy { get; set; } = true;
         public bool ModuleShelf { get; set; } = true;
+        public bool ModuleDrives { get; set; } = true;
 
         // ------------------------------------------------------------ система и обновления
 

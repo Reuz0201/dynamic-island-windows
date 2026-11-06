@@ -290,7 +290,9 @@ namespace DynamicIsland.SettingsApp
             Card("Текст",
                 Row("Шрифт", null, Choice(Fonts, _s.FontFamily, v => { _s.FontFamily = v; Changed(); })),
                 Row("Показывать артиста", "в компактном виде", Toggle(_s.ShowArtist, v => { _s.ShowArtist = v; Changed(); })),
-                Row("Эквалайзер", null, Toggle(_s.ShowEqualizer, v => { _s.ShowEqualizer = v; Changed(); }))),
+                Row("Эквалайзер", null, Toggle(_s.ShowEqualizer, v => { _s.ShowEqualizer = v; Changed(); })),
+                Row("Живой эквалайзер", "столбики качают под реальный звук, а не просто анимация",
+                    Toggle(_s.LiveEqualizer, v => { _s.LiveEqualizer = v; Changed(); }))),
 
             Card("Когда ничего не играет",
                 Row("Вид", null, Choice(new[] { ("pill", "Плашка с текстом"), ("mini", "Тонкая полоска") }, _s.IdleStyle,
@@ -339,7 +341,8 @@ namespace DynamicIsland.SettingsApp
                 Row("Громкость", "полоска вместо системной плашки + смена устройства звука", Toggle(_s.ModuleVolume, v => { _s.ModuleVolume = v; Changed(); })),
                 Row("Яркость", "на ноутбуках", Toggle(_s.ModuleBrightness, v => { _s.ModuleBrightness = v; Changed(); })),
                 Row("Микрофон и камера", "кто сейчас слушает или смотрит", Toggle(_s.ModulePrivacy, v => { _s.ModulePrivacy = v; Changed(); })),
-                Row("Полка для файлов", "перетащи файлы на остров, потом забери", Toggle(_s.ModuleShelf, v => { _s.ModuleShelf = v; Changed(); }))));
+                Row("Полка для файлов", "перетащи файлы на остров, потом забери", Toggle(_s.ModuleShelf, v => { _s.ModuleShelf = v; Changed(); })),
+                Row("Флешки и диски", "подключение, свободное место, безопасное извлечение", Toggle(_s.ModuleDrives, v => { _s.ModuleDrives = v; Changed(); }))));
 
         private FrameworkElement UpdatesPage()
         {

@@ -41,6 +41,9 @@ namespace DynamicIsland.Core
 
         public List<IslandAction> Actions { get; set; } = new();
 
+        /// <summary>Показывать только строкой в раскрытом острове (не в компакте и не во втором кружке).</summary>
+        public bool ExpandedOnly { get; set; }
+
         public string ActionsKey => string.Join("|", Actions.Select(a => a.Glyph + a.Text));
     }
 

@@ -184,6 +184,7 @@ namespace DynamicIsland
             Toggle("volume", s.ModuleVolume, () => new VolumeModule(this, volume: true, brightness: false), null);
             Toggle("brightness", s.ModuleBrightness, () => new VolumeModule(this, volume: false, brightness: true), null);
             Toggle("privacy", s.ModulePrivacy, () => new PrivacyModule(this), null);
+            Toggle("drives", s.ModuleDrives, () => new DrivesModule(this), () => RemoveActivitiesWithPrefix("drive:"));
         }
 
         private void Toggle(string key, bool enabled, Func<IDisposable> create, Action? cleanup)
@@ -227,6 +228,7 @@ namespace DynamicIsland
                 try { module.Dispose(); } catch { }
             }
             _moduleMap.Clear();
+            _spectrum.Dispose();
             _updater?.Dispose();
             _settingsWatcher?.Dispose();
         }

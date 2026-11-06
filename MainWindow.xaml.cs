@@ -81,7 +81,7 @@ namespace DynamicIsland
             };
 
             BuildEqualizer(EqCompact, 3, 12);
-            BuildEqualizer(EqExpanded, 4, 16);
+            BuildEqualizer(EqExpanded, 6, 16);
 
             IslandRow.MouseEnter += (_, _) =>
             {
@@ -625,8 +625,10 @@ namespace DynamicIsland
             bool hasMusic = _state != null;
             var acts = _activities.Values.OrderBy(a => a.Order).ToList();
 
-            LiveActivity? main = hasMusic ? null : acts.FirstOrDefault();
-            LiveActivity? bubble = hasMusic ? acts.FirstOrDefault() : acts.Skip(1).FirstOrDefault();
+            // «фоновые» активности (подключённая флешка) живут только в раскрытом виде
+            var visible = acts.Where(a => !a.ExpandedOnly).ToList();
+            LiveActivity? main = hasMusic ? null : visible.FirstOrDefault();
+            LiveActivity? bubble = hasMusic ? visible.FirstOrDefault() : visible.Skip(1).FirstOrDefault();
 
             // --- компакт-активность
             if (main != null)
@@ -873,38 +875,7 @@ namespace DynamicIsland
             }
         }
 
-        private void SetEqualizer(bool playing)
-        {
-            if (playing == _eqRunning) return;
-            _eqRunning = playing;
-
-            foreach (var panel in new[] { EqCompact, EqExpanded })
-            {
-                int i = 0;
-                foreach (var child in panel.Children)
-                {
-                    if (child is not Rectangle rect || rect.RenderTransform is not ScaleTransform scale) continue;
-
-                    if (playing)
-                    {
-                        scale.BeginAnimation(ScaleTransform.ScaleYProperty,
-                            new DoubleAnimation(0.25, 1, TimeSpan.FromSeconds(EqDurations[i % EqDurations.Length]))
-                            {
-                                AutoReverse = true,
-                                RepeatBehavior = RepeatBehavior.Forever,
-                                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
-                                BeginTime = TimeSpan.FromMilliseconds(i * 90),
-                            });
-                    }
-                    else
-                    {
-                        scale.BeginAnimation(ScaleTransform.ScaleYProperty,
-                            new DoubleAnimation(0.25, TimeSpan.FromMilliseconds(250)));
-                    }
-                    i++;
-                }
-            }
-        }
+        // SetEqualizer — в MainWindow.Equalizer.cs
 
         // ================================================================ кнопки плеера
 
