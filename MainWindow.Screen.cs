@@ -98,26 +98,51 @@ namespace DynamicIsland
             string name = cls.ToString();
             if (name is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd") return false;
 
-            // развёрнутое окно (браузер на весь экран с автоскрытием панели задач) — это не «полноэкранный режим»
-            if (!IsWindowVisible(fg) || IsIconic(fg) || IsZoomed(fg)) return false;
+            if (!IsWindowVisible(fg) || IsIconic(fg)) return false;
 
             var fgMonitor = Monitors.ForWindow(fg);
             var ownMonitor = Monitors.ForWindow(own);
             if (fgMonitor == null || ownMonitor == null) return false;
             if (!string.Equals(fgMonitor.DeviceName, ownMonitor.DeviceName, StringComparison.OrdinalIgnoreCase)) return false;
 
-            // окно закрывает весь монитор (видео на весь экран, borderless-игры)
-            if (GetWindowRect(fg, out var r))
-            {
-                var b = fgMonitor.Bounds;
-                if (r.Left <= b.Left && r.Top <= b.Top && r.Right >= b.Right && r.Bottom >= b.Bottom) return true;
-            }
+            SHQueryUserNotificationState(out int state);
 
             // эксклюзивный полноэкранный режим DirectX / режим презентации
-            if (SHQueryUserNotificationState(out int state) == 0 && (state == 3 || state == 4)) return true;
+            if (state == 3 || state == 4) return true;
 
-            return false;
+            if (!GetWindowRect(fg, out var r)) return false;
+            var b = fgMonitor.Bounds;
+            bool coversMonitor = r.Left <= b.Left + 2 && r.Top <= b.Top + 2 && r.Right >= b.Right - 2 && r.Bottom >= b.Bottom - 2;
+            if (!coversMonitor) return false;
+
+            // Окно на весь монитор. Отличаем «полноэкранный режим» от просто развёрнутого окна:
+            // у видео на весь экран (YouTube, плееры на сайтах — F11/кнопка ⛶), игр и плееров
+            // нет заголовка окна. Браузер при этом может оставаться «развёрнутым» (IsZoomed),
+            // поэтому на IsZoomed не смотрим.
+            int style = GetWindowLong(fg, GWL_STYLE);
+            bool hasCaption = (style & WS_CAPTION) == WS_CAPTION;
+            bool fullscreen = !hasCaption || state == 2 /* QUNS_BUSY: Windows сама считает, что идёт полноэкранное приложение */ || !IsZoomed(fg);
+
+            LogFullscreenDecision(fg, name, style, state, fullscreen);
+            return fullscreen;
         }
+
+        private IntPtr _lastLoggedWindow;
+        private bool _lastLoggedDecision;
+
+        /// <summary>Пишем в лог, почему окно посчитали (или нет) полноэкранным — раз на окно.</summary>
+        private void LogFullscreenDecision(IntPtr hwnd, string cls, int style, int state, bool fullscreen)
+        {
+            if (hwnd == _lastLoggedWindow && fullscreen == _lastLoggedDecision) return;
+            _lastLoggedWindow = hwnd;
+            _lastLoggedDecision = fullscreen;
+            Log.Info($"Окно на весь монитор: класс={cls} стиль=0x{style:X8} QUNS={state} развёрнуто={IsZoomed(hwnd)} → {(fullscreen ? "прячусь" : "не прячусь")}");
+        }
+
+        private const int GWL_STYLE = -16;
+        private const int WS_CAPTION = 0x00C00000;
+
+        // GetWindowLong объявлен в MainWindow.xaml.cs
 
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
