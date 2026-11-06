@@ -184,7 +184,14 @@ namespace DynamicIsland
             Toggle("volume", s.ModuleVolume, () => new VolumeModule(this, volume: true, brightness: false), null);
             Toggle("brightness", s.ModuleBrightness, () => new VolumeModule(this, volume: false, brightness: true), null);
             Toggle("privacy", s.ModulePrivacy, () => new PrivacyModule(this), null);
-            Toggle("drives", s.ModuleDrives, () => new DrivesModule(this), () => RemoveActivitiesWithPrefix("drive:"));
+            Toggle("drives", s.ModuleDrives, () => new DrivesModule(this), () =>
+            {
+                RemoveActivitiesWithPrefix("drive:");
+                RemoveActivitiesWithPrefix("copy:");
+            });
+            Toggle("welcome", s.ModuleWelcome, () => new WelcomeModule(this), null);
+            Toggle("toggles", s.ModuleToggles, () => new TogglesModule(this), null);
+            Toggle("windows-update", s.ModuleWindowsUpdate, () => new WindowsUpdateModule(this), null);
         }
 
         private void Toggle(string key, bool enabled, Func<IDisposable> create, Action? cleanup)

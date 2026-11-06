@@ -25,7 +25,21 @@ namespace DynamicIsland.Modules
             public string Letter = "";
             public string Label = "";
             public bool Removable;
+
+            // --- копирование на диск: следим, как убывает свободное место
+            public long LastFree = -1;
+            public int WriteTicks;
+            public int IdleTicks;
+            public bool Copying;
+            public long Written;
+            public long Pending;
+            public double Speed;
+            public DateTime CopyStart;
         }
+
+        private const double PollSeconds = 1.5;
+        private const double CopyStartBps = 512 * 1024;
+        private const double CopyIdleBps = 64 * 1024;
 
         private readonly IIslandHost _host;
         private readonly object _lock = new();
@@ -101,6 +115,7 @@ namespace DynamicIsland.Modules
                 var state = _drives[root];
                 _drives.Remove(root);
                 _host.RemoveActivity(ActivityId(root));
+                _host.RemoveActivity(CopyId(root));
 
                 bool ejected = _ejecting.Remove(root);
                 Log.Info($"Отключён диск {state.Letter} (извлечён через остров: {ejected})");
@@ -116,7 +131,11 @@ namespace DynamicIsland.Modules
                 });
             }
 
-            // --- раз в ~6 сек обновляем свободное место (вдруг что-то копируют)
+            // --- идёт ли запись на диск
+            foreach (var d in current.Values.Where(d => _drives.ContainsKey(d.Name)))
+                UpdateCopy(d, _drives[d.Name]);
+
+            // --- раз в ~6 сек обновляем свободное место
             if (_tick % 4 == 0)
             {
                 foreach (var d in current.Values.Where(d => _drives.ContainsKey(d.Name)))
@@ -143,6 +162,101 @@ namespace DynamicIsland.Modules
             }
 
             UpdateStatus();
+        }
+
+        // ------------------------------------------------------------ копирование
+
+        private static string CopyId(string root) => "copy:" + root.ToUpperInvariant();
+
+        private void UpdateCopy(DriveInfo d, DriveState state)
+        {
+            var (free, total, _) = Space(d);
+            if (total <= 0) return;
+
+            if (state.LastFree < 0)
+            {
+                state.LastFree = free;
+                return;
+            }
+
+            long delta = state.LastFree - free; // > 0 — место убывает, значит пишут
+            state.LastFree = free;
+            double bps = Math.Max(0, delta) / PollSeconds;
+
+            if (!state.Copying)
+            {
+                if (bps >= CopyStartBps)
+                {
+                    state.WriteTicks++;
+                    state.Pending += delta;
+                }
+                else
+                {
+                    state.WriteTicks = 0;
+                    state.Pending = 0;
+                }
+
+                if (state.WriteTicks < 2) return;
+
+                state.Copying = true;
+                state.Written = state.Pending;
+                state.Speed = bps;
+                state.IdleTicks = 0;
+                state.CopyStart = DateTime.UtcNow;
+                Log.Info($"Запись на {state.Letter} началась");
+            }
+            else
+            {
+                if (delta > 0) state.Written += delta;
+                state.Speed = state.Speed * 0.6 + bps * 0.4;
+                state.IdleTicks = bps < CopyIdleBps ? state.IdleTicks + 1 : 0;
+
+                // ~4.5 сек тишины — копирование закончилось
+                if (state.IdleTicks >= 3)
+                {
+                    FinishCopy(state);
+                    return;
+                }
+            }
+
+            _host.SetActivity(new LiveActivity(CopyId(state.Root))
+            {
+                Order = 5,
+                Glyph = UsbGlyph,
+                Accent = Palette.Cyan,
+                Title = $"Копирую на {state.Label}",
+                Subtitle = $"записано {Format.Size(state.Written)} · {Format.Speed(state.Speed)} · свободно {Format.Size(free)}",
+                Badge = Format.Speed(state.Speed),
+                Progress = 1 - (double)free / total, // заполненность диска растёт по ходу копирования
+            });
+        }
+
+        private void FinishCopy(DriveState state)
+        {
+            state.Copying = false;
+            state.WriteTicks = 0;
+            state.Pending = 0;
+            _host.RemoveActivity(CopyId(state.Root));
+
+            var took = DateTime.UtcNow - state.CopyStart - TimeSpan.FromSeconds(PollSeconds * 3);
+            if (took < TimeSpan.FromSeconds(1)) took = TimeSpan.FromSeconds(1);
+            Log.Info($"Запись на {state.Letter} закончилась: {Format.Size(state.Written)}");
+
+            string root = state.Root;
+            _host.ShowAlert(new IslandAlert
+            {
+                Key = "drive:" + root,
+                Glyph = Glyphs.Check,
+                Accent = Palette.Green,
+                Title = "Скопировано",
+                Subtitle = $"{Format.Size(state.Written)} на {state.Label} ({state.Letter})",
+                Detail = $"за {Format.HumanMinutes(TimeSpan.FromSeconds(Math.Round(took.TotalSeconds)))} · можно извлекать",
+                Duration = TimeSpan.FromSeconds(6),
+                Actions =
+                {
+                    new IslandAction { Glyph = UsbGlyph, Text = "Извлечь", OnClick = () => Eject(root) },
+                },
+            });
         }
 
         private bool IsExternal(DriveInfo d) =>

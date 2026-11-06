@@ -342,7 +342,10 @@ namespace DynamicIsland.SettingsApp
                 Row("Яркость", "на ноутбуках", Toggle(_s.ModuleBrightness, v => { _s.ModuleBrightness = v; Changed(); })),
                 Row("Микрофон и камера", "кто сейчас слушает или смотрит", Toggle(_s.ModulePrivacy, v => { _s.ModulePrivacy = v; Changed(); })),
                 Row("Полка для файлов", "перетащи файлы на остров, потом забери", Toggle(_s.ModuleShelf, v => { _s.ModuleShelf = v; Changed(); })),
-                Row("Флешки и диски", "подключение, свободное место, безопасное извлечение", Toggle(_s.ModuleDrives, v => { _s.ModuleDrives = v; Changed(); }))));
+                Row("Флешки и диски", "подключение, копирование, свободное место, извлечение", Toggle(_s.ModuleDrives, v => { _s.ModuleDrives = v; Changed(); })),
+                Row("«С возвращением»", "после сна или перерыва: сколько тебя не было и сколько ушло заряда", Toggle(_s.ModuleWelcome, v => { _s.ModuleWelcome = v; Changed(); })),
+                Row("Переключатели", "Wi-Fi и Bluetooth вкл/выкл, сеть Wi-Fi, экономия заряда", Toggle(_s.ModuleToggles, v => { _s.ModuleToggles = v; Changed(); })),
+                Row("Windows Update", "изредка напомнить, что Windows ждёт перезагрузки", Toggle(_s.ModuleWindowsUpdate, v => { _s.ModuleWindowsUpdate = v; Changed(); }))));
 
         private FrameworkElement UpdatesPage()
         {

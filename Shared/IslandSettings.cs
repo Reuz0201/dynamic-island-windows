@@ -88,6 +88,9 @@ namespace DynamicIsland.Shared
         public bool ModulePrivacy { get; set; } = true;
         public bool ModuleShelf { get; set; } = true;
         public bool ModuleDrives { get; set; } = true;
+        public bool ModuleWelcome { get; set; } = true;
+        public bool ModuleToggles { get; set; } = true;
+        public bool ModuleWindowsUpdate { get; set; } = true;
 
         // ------------------------------------------------------------ система и обновления
 
