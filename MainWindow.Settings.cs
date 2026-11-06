@@ -192,6 +192,7 @@ namespace DynamicIsland
             Toggle("welcome", s.ModuleWelcome, () => new WelcomeModule(this), null);
             Toggle("toggles", s.ModuleToggles, () => new TogglesModule(this), null);
             Toggle("windows-update", s.ModuleWindowsUpdate, () => new WindowsUpdateModule(this), null);
+            Toggle("devices", s.ModuleDevices, () => new DevicesModule(this), null);
         }
 
         private void Toggle(string key, bool enabled, Func<IDisposable> create, Action? cleanup)

@@ -91,6 +91,7 @@ namespace DynamicIsland.Shared
         public bool ModuleWelcome { get; set; } = true;
         public bool ModuleToggles { get; set; } = true;
         public bool ModuleWindowsUpdate { get; set; } = true;
+        public bool ModuleDevices { get; set; } = true;
 
         // ------------------------------------------------------------ система и обновления
 
